@@ -37,29 +37,36 @@ class ReflectionCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: AppColors.accentCyan.withOpacity(0.12),
-                            shape: BoxShape.circle,
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: AppColors.accentCyan.withOpacity(0.12),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.psychology_rounded,
+                              color: AppColors.accentCyan,
+                              size: 20,
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.psychology_rounded,
-                            color: AppColors.accentCyan,
-                            size: 20,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Weekly Coach Reflection',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          'Weekly Coach Reflection',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     const Icon(
                       Icons.chevron_right_rounded,
                       color: AppColors.textSecondary,

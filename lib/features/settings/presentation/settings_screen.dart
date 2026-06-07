@@ -60,56 +60,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showApiKeyDialog(BuildContext context) {
-    final provider = Provider.of<FinanceProvider>(context, listen: false);
-    final keyController = TextEditingController(text: provider.geminiApiKey);
-
+  void _showDownloadDialog(BuildContext context) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
-        return AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: const Text('Gemini API Key', style: TextStyle(color: AppColors.textPrimary)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Enter your Google Gemini API key to enable live coach reflections and insights.',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: keyController,
-                obscureText: true,
-                style: const TextStyle(color: AppColors.textPrimary),
-                decoration: const InputDecoration(
-                  hintText: 'AIzaSy...',
-                  hintStyle: TextStyle(color: AppColors.textSecondary),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
-            ),
-            TextButton(
-              onPressed: () {
-                final key = keyController.text.trim();
-                provider.setGeminiApiKey(key);
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(key.isEmpty ? 'API Key cleared.' : 'Gemini API Key saved successfully!'),
-                    backgroundColor: key.isEmpty ? AppColors.dangerRed : AppColors.successGreen,
+        return Consumer<FinanceProvider>(
+          builder: (context, provider, child) {
+            final progressText = (provider.downloadProgress * 100).toStringAsFixed(0);
+            return AlertDialog(
+              backgroundColor: AppColors.surface,
+              title: const Text('Download Local AI Coach', style: TextStyle(color: AppColors.textPrimary)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'This will download the Qwen-2-0.5B AI model (approx. 350 MB) directly to your device. Once completed, your weekly coach reviews will work 100% offline with no API bills.',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
                   ),
-                );
-              },
-              child: const Text('Save Key', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
-            ),
-          ],
+                  const SizedBox(height: 20),
+                  if (provider.isDownloadingModel) ...[
+                    LinearProgressIndicator(
+                      value: provider.downloadProgress,
+                      backgroundColor: Colors.white.withOpacity(0.05),
+                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
+                    ),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Text(
+                        '$progressText% downloaded',
+                        style: const TextStyle(color: AppColors.accentCyan, fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ),
+                  ] else ...[
+                    const Center(
+                      child: Text(
+                        'Ready to download',
+                        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                if (!provider.isDownloadingModel)
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+                  ),
+                if (!provider.isDownloadingModel)
+                  TextButton(
+                    onPressed: () {
+                      provider.startModelDownload().then((_) {
+                        if (context.mounted && provider.isModelDownloaded) {
+                          Navigator.of(context).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Local Qwen AI Engine is ready!'),
+                              backgroundColor: AppColors.successGreen,
+                            ),
+                          );
+                        }
+                      });
+                    },
+                    child: const Text('Start Download', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+                  ),
+                if (provider.isDownloadingModel)
+                  const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: Text('Downloading file...', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  ),
+              ],
+            );
+          },
         );
       },
     );
@@ -199,22 +223,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildSectionHeader('CONFIGURATIONS'),
             _buildSettingsRow(
               context,
-              'Gemini AI Coach Key',
-              provider.geminiApiKey.isEmpty
-                  ? 'Tap to configure AI Coach'
-                  : 'Gemini Coach is Active',
+              'Local AI Coach Engine',
+              provider.isModelDownloaded
+                  ? 'Qwen AI Engine is Active (Offline)'
+                  : (provider.isDownloadingModel
+                      ? 'Downloading: ${(provider.downloadProgress * 100).toStringAsFixed(0)}%'
+                      : 'Offline AI. Tap to download (350MB)'),
               Icons.psychology_rounded,
               AppColors.accentCyan,
-              onTap: () => _showApiKeyDialog(context),
-              trailing: provider.geminiApiKey.isEmpty
+              onTap: () {
+                if (!provider.isModelDownloaded && !provider.isDownloadingModel) {
+                  _showDownloadDialog(context);
+                }
+              },
+              trailing: provider.isModelDownloaded
                   ? const Text(
-                      'MISSING',
-                      style: TextStyle(color: AppColors.dangerRed, fontSize: 11, fontWeight: FontWeight.bold),
-                    )
-                  : const Text(
                       'ACTIVE',
                       style: TextStyle(color: AppColors.successGreen, fontSize: 11, fontWeight: FontWeight.bold),
-                    ),
+                    )
+                  : (provider.isDownloadingModel
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.accentCyan,
+                          ),
+                        )
+                      : const Text(
+                          'DOWNLOAD',
+                          style: TextStyle(color: AppColors.warningYellow, fontSize: 11, fontWeight: FontWeight.bold),
+                        )),
             ),
             const SizedBox(height: 8),
             _buildSwitchRow(

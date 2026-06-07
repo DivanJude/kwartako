@@ -5,6 +5,7 @@ import '../models/insight.dart';
 import '../models/reflection.dart';
 import '../database/database_helper.dart';
 import '../services/ai_service.dart';
+import '../services/local_ai_service.dart';
 
 class FinanceProvider extends ChangeNotifier {
   String _userName = 'Alex';
@@ -14,6 +15,9 @@ class FinanceProvider extends ChangeNotifier {
   bool _isGeneratingAI = false;
   bool _hasCompletedOnboarding = false;
   bool _isInitialized = false;
+  bool _isModelDownloaded = false;
+  double _downloadProgress = 0.0;
+  bool _isDownloadingModel = false;
   
   List<Expense> _expenses = [];
   List<Debt> _debts = [];
@@ -56,6 +60,12 @@ class FinanceProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint("Error loading from database: $e");
     } finally {
+      try {
+        await LocalAIService.loadModelFromAssets();
+        _isModelDownloaded = true;
+      } catch (e) {
+        _isModelDownloaded = await LocalAIService.isModelDownloaded();
+      }
       _isInitialized = true;
       notifyListeners();
     }
@@ -69,6 +79,12 @@ class FinanceProvider extends ChangeNotifier {
     _geminiApiKey = '';
     _isGeneratingAI = false;
     _hasCompletedOnboarding = false;
+    try {
+      await LocalAIService.loadModelFromAssets();
+      _isModelDownloaded = true;
+    } catch (e) {
+      _isModelDownloaded = await LocalAIService.isModelDownloaded();
+    }
     await _loadFromDatabase();
   }
 
@@ -85,13 +101,33 @@ class FinanceProvider extends ChangeNotifier {
     generateAICoachFeedback();
   }
 
+  Future<void> startModelDownload() async {
+    if (_isDownloadingModel || _isModelDownloaded) return;
+    _isDownloadingModel = true;
+    _downloadProgress = 0.0;
+    notifyListeners();
+
+    try {
+      await for (final progress in LocalAIService.downloadModel()) {
+        _downloadProgress = progress;
+        notifyListeners();
+      }
+      _isModelDownloaded = true;
+    } catch (e) {
+      debugPrint("Download failed: $e");
+      _isModelDownloaded = false;
+    } finally {
+      _isDownloadingModel = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> generateAICoachFeedback() async {
-    if (_geminiApiKey.isEmpty) return;
+    if (!_isModelDownloaded) return;
     _isGeneratingAI = true;
     notifyListeners();
     try {
-      final result = await AIService.generateFeedback(
-        apiKey: _geminiApiKey,
+      final result = await LocalAIService.generateFeedback(
         userName: _userName,
         allowance: _allowance,
         expenses: weeklyExpenses,
@@ -104,7 +140,7 @@ class FinanceProvider extends ChangeNotifier {
       await DatabaseHelper.instance.saveAllInsights(_insights);
       await DatabaseHelper.instance.saveReflection(_reflection);
     } catch (e) {
-      debugPrint("Gemini generation error: $e");
+      debugPrint("Local AI generation error: $e");
     } finally {
       _isGeneratingAI = false;
       notifyListeners();
@@ -119,6 +155,9 @@ class FinanceProvider extends ChangeNotifier {
   bool get isGeneratingAI => _isGeneratingAI;
   bool get hasCompletedOnboarding => _hasCompletedOnboarding;
   bool get isInitialized => _isInitialized;
+  bool get isModelDownloaded => _isModelDownloaded;
+  double get downloadProgress => _downloadProgress;
+  bool get isDownloadingModel => _isDownloadingModel;
   List<Expense> get expenses => List.unmodifiable(_expenses);
   List<Debt> get debts => List.unmodifiable(_debts);
   List<Insight> get insights => List.unmodifiable(_insights);

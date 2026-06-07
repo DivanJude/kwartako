@@ -172,7 +172,7 @@ class DashboardScreen extends StatelessWidget {
                     ],
                   ),
                 )
-              else if (provider.geminiApiKey.isEmpty)
+              else if (!provider.isModelDownloaded)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
@@ -199,7 +199,7 @@ class DashboardScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        'Set up your Gemini API key in Settings to get personalized, real-time spending insights and reflections!',
+                        'Download the local AI Coach model in Settings to get private, 100% offline spending insights and reflections!',
                         style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
                       ),
                       const SizedBox(height: 12),
@@ -211,7 +211,7 @@ class DashboardScreen extends StatelessWidget {
                         },
                         icon: const Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.accentCyan),
                         label: const Text(
-                          'Configure in Settings',
+                          'Download in Settings',
                           style: TextStyle(color: AppColors.accentCyan, fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                         style: TextButton.styleFrom(

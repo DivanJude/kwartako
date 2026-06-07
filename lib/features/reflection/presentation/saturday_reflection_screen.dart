@@ -23,7 +23,7 @@ class SaturdayReflectionScreen extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          if (provider.geminiApiKey.isNotEmpty)
+          if (provider.isModelDownloaded)
             provider.isGeneratingAI
                 ? const Center(
                     child: Padding(
@@ -349,7 +349,7 @@ class SaturdayReflectionScreen extends StatelessWidget {
       );
     }
 
-    if (provider.geminiApiKey.isEmpty) {
+    if (!provider.isModelDownloaded) {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: glassTheme?.cardDecoration ?? BoxDecoration(
@@ -365,7 +365,7 @@ class SaturdayReflectionScreen extends StatelessWidget {
                 const Icon(Icons.psychology_rounded, color: AppColors.warningYellow),
                 const SizedBox(width: 8),
                 Text(
-                  'AI Recommendations Offline',
+                  'Local AI Coach Offline',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: AppColors.warningYellow,
@@ -375,27 +375,48 @@ class SaturdayReflectionScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Set up a Gemini API Key in Settings to get real-time recommendations based on your actual spending patterns!',
+              'Download the local Qwen AI model to get private, 100% offline weekly coach suggestions based on your actual spending!',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
             ),
-            const SizedBox(height: 12),
-            TextButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const SettingsScreen()),
-                );
-              },
-              icon: const Icon(Icons.arrow_forward_rounded, size: 16, color: AppColors.accentCyan),
-              label: const Text(
-                'Configure in Settings',
-                style: TextStyle(color: AppColors.accentCyan, fontWeight: FontWeight.bold, fontSize: 13),
+            const SizedBox(height: 16),
+            if (provider.isDownloadingModel) ...[
+              LinearProgressIndicator(
+                value: provider.downloadProgress,
+                backgroundColor: Colors.white.withOpacity(0.05),
+                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
               ),
-              style: TextButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  'Downloading: ${(provider.downloadProgress * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(color: AppColors.accentCyan, fontWeight: FontWeight.bold, fontSize: 12),
+                ),
               ),
-            ),
+            ] else ...[
+              ElevatedButton.icon(
+                onPressed: () {
+                  provider.startModelDownload().then((_) {
+                    if (context.mounted && provider.isModelDownloaded) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Local Qwen AI Engine is ready!'),
+                          backgroundColor: AppColors.successGreen,
+                        ),
+                      );
+                    }
+                  });
+                },
+                icon: const Icon(Icons.download_rounded, size: 16),
+                label: const Text('Download AI Model (350 MB)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.accentCyan.withOpacity(0.12),
+                  foregroundColor: AppColors.accentCyan,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+              ),
+            ],
           ],
         ),
       );

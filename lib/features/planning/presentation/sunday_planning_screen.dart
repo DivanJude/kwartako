@@ -242,14 +242,27 @@ class _SundayPlanningScreenState extends State<SundayPlanningScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('WEEKLY ALLOWANCE TARGET', style: TextStyle(fontSize: 10, letterSpacing: 1.0, color: AppColors.textSecondary)),
-                  const SizedBox(height: 4),
-                  Text('₱${_allowanceAmount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'WEEKLY ALLOWANCE TARGET',
+                      style: TextStyle(fontSize: 10, letterSpacing: 1.0, color: AppColors.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '₱${_allowanceAmount.toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 12),
               OutlinedButton(
                 onPressed: () {
                   setState(() {

@@ -70,12 +70,16 @@ class ExpenseCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Text(
-                            category.displayName,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: category.color,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                          Flexible(
+                            child: Text(
+                              category.displayName,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: category.color,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Text(

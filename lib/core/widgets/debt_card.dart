@@ -40,41 +40,48 @@ class DebtCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     // Name and Owed direction tag
-                    Row(
-                      children: [
-                        // Direction indicator
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: debt.isIOwe 
-                                ? AppColors.dangerRed.withOpacity(0.1) 
-                                : AppColors.primaryBlue.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // Direction indicator
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
                               color: debt.isIOwe 
-                                  ? AppColors.dangerRed.withOpacity(0.3) 
-                                  : AppColors.primaryBlue.withOpacity(0.3),
-                            ),
-                          ),
-                          child: Text(
-                            debt.isIOwe ? 'I Owe' : 'Owes Me',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: debt.isIOwe ? AppColors.dangerRed : AppColors.primaryBlue,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          debt.name,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary,
+                                  ? AppColors.dangerRed.withOpacity(0.1) 
+                                  : AppColors.primaryBlue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: debt.isIOwe 
+                                    ? AppColors.dangerRed.withOpacity(0.3) 
+                                    : AppColors.primaryBlue.withOpacity(0.3),
                               ),
-                        ),
-                      ],
+                            ),
+                            child: Text(
+                              debt.isIOwe ? 'I Owe' : 'Owes Me',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: debt.isIOwe ? AppColors.dangerRed : AppColors.primaryBlue,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              debt.name,
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textPrimary,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 12),
                     // Status Tag
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
