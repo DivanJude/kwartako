@@ -205,7 +205,7 @@ class DebtDetailScreen extends StatelessWidget {
                   ),
                 )
               else
-                _buildTimelineList(context, debt.payments, debt.isIOwe),
+                _buildTimelineList(context, debt.payments, debt.isIOwe, provider),
               
               const SizedBox(height: 40),
 
@@ -215,7 +215,7 @@ class DebtDetailScreen extends StatelessWidget {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => _showPayDialog(context, provider),
+                        onPressed: () => _showPayDialog(context, provider, debt),
                         style: OutlinedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           side: const BorderSide(color: AppColors.primaryBlue),
@@ -264,69 +264,118 @@ class DebtDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTimelineList(BuildContext context, List<DebtPayment> payments, bool isIOwe) {
+  Widget _buildTimelineList(BuildContext context, List<DebtPayment> payments, bool isIOwe, FinanceProvider provider) {
     return Column(
       children: List.generate(payments.length, (index) {
         final payment = payments[index];
         final isLast = index == payments.length - 1;
 
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Left Node indicator
-            Column(
-              children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: const BoxDecoration(
-                    color: AppColors.successGreen,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                if (!isLast)
-                  Container(
-                    width: 2,
-                    height: 48,
-                    color: Colors.white.withOpacity(0.08),
-                  ),
-              ],
+        return Dismissible(
+          key: Key(payment.id),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: AppColors.dangerRed.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.dangerRed.withOpacity(0.2)),
             ),
-            const SizedBox(width: 16),
-            // Right Details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            child: const Icon(Icons.delete_forever_rounded, color: AppColors.dangerRed),
+          ),
+          confirmDismiss: (direction) async {
+            return await showDialog<bool>(
+              context: context,
+              builder: (context) {
+                return AlertDialog(
+                  backgroundColor: AppColors.surface,
+                  title: const Text('Delete Payment Record?', style: TextStyle(color: AppColors.dangerRed)),
+                  content: Text(
+                    'Are you sure you want to delete this payment of ₱${payment.amount.toStringAsFixed(2)}? This will restore the outstanding balance.',
+                    style: const TextStyle(color: AppColors.textSecondary),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text('Delete', style: TextStyle(color: AppColors.dangerRed, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                );
+              },
+            ) ?? false;
+          },
+          onDismissed: (direction) {
+            provider.deleteDebtPayment(debtId, payment.id);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Deleted payment of ₱${payment.amount.toStringAsFixed(2)}'),
+                backgroundColor: AppColors.dangerRed,
+              ),
+            );
+          },
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Left Node indicator
+              Column(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        isIOwe ? 'Payment Made' : 'Payment Received',
-                        style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-                      Text(
-                        '₱${payment.amount.toStringAsFixed(2)}',
-                        style: const TextStyle(color: AppColors.successGreen, fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-                    ],
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: const BoxDecoration(
+                      color: AppColors.successGreen,
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${payment.date.month}/${payment.date.day}/${payment.date.year}',
-                    style: TextStyle(color: AppColors.textSecondary.withOpacity(0.7), fontSize: 11),
-                  ),
-                  const SizedBox(height: 12),
+                  if (!isLast)
+                    Container(
+                      width: 2,
+                      height: 48,
+                      color: Colors.white.withOpacity(0.08),
+                    ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(width: 16),
+              // Right Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          isIOwe ? 'Payment Made' : 'Payment Received',
+                          style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                        Text(
+                          '₱${payment.amount.toStringAsFixed(2)}',
+                          style: const TextStyle(color: AppColors.successGreen, fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${payment.date.month}/${payment.date.day}/${payment.date.year}',
+                      style: TextStyle(color: AppColors.textSecondary.withOpacity(0.7), fontSize: 11),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+            ],
+          ),
         );
       }),
     );
   }
 
-  void _showPayDialog(BuildContext context, FinanceProvider provider) {
+  void _showPayDialog(BuildContext context, FinanceProvider provider, Debt debt) {
     final payController = TextEditingController();
 
     showDialog(
@@ -351,17 +400,34 @@ class DebtDetailScreen extends StatelessWidget {
             ),
             TextButton(
               onPressed: () {
-                final amount = double.tryParse(payController.text) ?? 0.0;
-                if (amount > 0) {
-                  provider.payPartialDebt(debtId, amount);
-                  Navigator.of(context).pop();
+                final amountText = payController.text.trim().replaceAll(',', '');
+                final amount = double.tryParse(amountText) ?? 0.0;
+                if (amount <= 0) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Successfully logged payment of ₱${amount.toStringAsFixed(2)}!'),
-                      backgroundColor: AppColors.successGreen,
+                    const SnackBar(
+                      content: Text('Please enter a valid amount greater than 0'),
+                      backgroundColor: AppColors.dangerRed,
                     ),
                   );
+                  return;
                 }
+                if (amount > debt.remainingAmount) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Payment cannot exceed outstanding balance of ₱${debt.remainingAmount.toStringAsFixed(2)}'),
+                      backgroundColor: AppColors.dangerRed,
+                    ),
+                  );
+                  return;
+                }
+                provider.payPartialDebt(debtId, amount);
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Successfully logged payment of ₱${amount.toStringAsFixed(2)}!'),
+                    backgroundColor: AppColors.successGreen,
+                  ),
+                );
               },
               child: const Text('Save Payment', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
             ),

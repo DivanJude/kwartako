@@ -32,8 +32,6 @@ class _DebtManagementScreenState extends State<DebtManagementScreen> with Single
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<FinanceProvider>(context);
-    final size = MediaQuery.of(context).size;
-    final glassTheme = Theme.of(context).extension<GlassThemeExtension>();
 
     final iOweDebts = provider.debts.where((d) => d.isIOwe).toList();
     final theyOweMeDebts = provider.debts.where((d) => !d.isIOwe).toList();
@@ -380,22 +378,39 @@ class _DebtManagementScreenState extends State<DebtManagementScreen> with Single
                     child: ElevatedButton(
                       onPressed: () {
                         final name = nameController.text.trim();
-                        final amount = double.tryParse(amountController.text) ?? 0.0;
-                        if (name.isNotEmpty && amount > 0) {
-                          provider.addDebt(
-                            name: name,
-                            amount: amount,
-                            isIOwe: isIOweOption,
-                            dueDate: selectedDate,
-                          );
-                          Navigator.of(context).pop();
+                        final amountText = amountController.text.trim().replaceAll(',', '');
+                        final amount = double.tryParse(amountText) ?? 0.0;
+                        if (name.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Successfully logged debt for $name!'),
-                              backgroundColor: AppColors.successGreen,
+                            const SnackBar(
+                              content: Text('Please enter a valid name.'),
+                              backgroundColor: AppColors.dangerRed,
                             ),
                           );
+                          return;
                         }
+                        if (amount <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please enter an amount greater than 0.'),
+                              backgroundColor: AppColors.dangerRed,
+                            ),
+                          );
+                          return;
+                        }
+                        provider.addDebt(
+                          name: name,
+                          amount: amount,
+                          isIOwe: isIOweOption,
+                          dueDate: selectedDate,
+                        );
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Successfully logged debt for $name!'),
+                            backgroundColor: AppColors.successGreen,
+                          ),
+                        );
                       },
                       child: const Text('Save Record'),
                     ),

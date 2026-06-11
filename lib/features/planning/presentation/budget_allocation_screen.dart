@@ -61,10 +61,15 @@ class _BudgetAllocationScreenState extends State<BudgetAllocationScreen> {
     }
 
     final provider = Provider.of<FinanceProvider>(context, listen: false);
-    provider.setAllowance(widget.allowanceAmount);
+    provider.saveBudgetPlan(
+      allowance: widget.allowanceAmount,
+      food: _foodRatio,
+      trans: _transRatio,
+      school: _schoolRatio,
+      savings: _savingsRatio,
+      others: _othersRatio,
+    );
     
-    // In a production app, we would write these specific category targets to db,
-    // for this mock state we validate, update allowance, and pop twice.
     Navigator.of(context).pop(); // pop tuner
     Navigator.of(context).pop(); // pop planning input
     

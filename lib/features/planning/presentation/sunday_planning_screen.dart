@@ -17,6 +17,24 @@ class SundayPlanningScreen extends StatefulWidget {
 class _SundayPlanningScreenState extends State<SundayPlanningScreen> {
   final TextEditingController _allowanceController = TextEditingController();
   bool _planGenerated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = Provider.of<FinanceProvider>(context, listen: false);
+      if (provider.allowance > 0) {
+        _allowanceController.text = provider.allowance.toStringAsFixed(0);
+      }
+      setState(() {
+        _foodRatio = provider.foodRatio;
+        _transRatio = provider.transRatio;
+        _schoolRatio = provider.schoolRatio;
+        _savingsRatio = provider.savingsRatio;
+        _othersRatio = provider.othersRatio;
+      });
+    });
+  }
   double _allowanceAmount = 0.0;
 
   // Initial recommended allocation ratios
@@ -33,7 +51,7 @@ class _SundayPlanningScreenState extends State<SundayPlanningScreen> {
   }
 
   void _generatePlan() {
-    final amountText = _allowanceController.text.trim();
+    final amountText = _allowanceController.text.trim().replaceAll(',', '');
     final amount = double.tryParse(amountText) ?? 0.0;
 
     if (amount <= 100) {
@@ -55,7 +73,14 @@ class _SundayPlanningScreenState extends State<SundayPlanningScreen> {
 
   void _saveBudgetPlan() {
     final provider = Provider.of<FinanceProvider>(context, listen: false);
-    provider.setAllowance(_allowanceAmount);
+    provider.saveBudgetPlan(
+      allowance: _allowanceAmount,
+      food: _foodRatio,
+      trans: _transRatio,
+      school: _schoolRatio,
+      savings: _savingsRatio,
+      others: _othersRatio,
+    );
     
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(

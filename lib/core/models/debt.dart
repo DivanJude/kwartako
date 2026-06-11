@@ -93,17 +93,34 @@ class Debt {
   }
 
   factory Debt.fromMap(Map<String, dynamic> map, List<DebtPayment> paymentsList) {
+    final originalAmount = (map['originalAmount'] as num).toDouble();
+    final remainingAmount = (map['remainingAmount'] as num).toDouble();
+    final dueDate = DateTime.parse(map['dueDate'] as String);
+    final isIOwe = (map['isIOwe'] as int) == 1;
+    
+    var status = DebtStatus.values.firstWhere(
+      (s) => s.name == map['status'],
+      orElse: () => DebtStatus.pending,
+    );
+
+    if (remainingAmount <= 0.0) {
+      status = DebtStatus.paid;
+    } else {
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      if (dueDate.isBefore(todayStart)) {
+        status = DebtStatus.overdue;
+      }
+    }
+
     return Debt(
       id: map['id'] as String,
       name: map['name'] as String,
-      originalAmount: (map['originalAmount'] as num).toDouble(),
-      remainingAmount: (map['remainingAmount'] as num).toDouble(),
-      dueDate: DateTime.parse(map['dueDate'] as String),
-      isIOwe: (map['isIOwe'] as int) == 1,
-      status: DebtStatus.values.firstWhere(
-        (s) => s.name == map['status'],
-        orElse: () => DebtStatus.pending,
-      ),
+      originalAmount: originalAmount,
+      remainingAmount: remainingAmount,
+      dueDate: dueDate,
+      isIOwe: isIOwe,
+      status: status,
       payments: paymentsList,
     );
   }

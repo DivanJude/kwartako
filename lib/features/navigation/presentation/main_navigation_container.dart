@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_colors.dart';
+import 'package:provider/provider.dart';
 import '../../../core/widgets/bottom_navigation_bar.dart';
+import '../../../core/state/finance_provider.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../transaction/presentation/transaction_history_screen.dart';
 import '../../debt/presentation/debt_management_screen.dart';
@@ -14,22 +15,17 @@ class MainNavigationContainer extends StatefulWidget {
 }
 
 class _MainNavigationContainerState extends State<MainNavigationContainer> {
-  int _currentIndex = 0;
-
-  void _onTabTapped(int index) {
-    setState(() {
-      _currentIndex = index;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    final provider = Provider.of<FinanceProvider>(context);
+    final currentIndex = provider.currentNavigationIndex;
+
     return Scaffold(
       body: Stack(
         children: [
           // Content pages stack
           IndexedStack(
-            index: _currentIndex,
+            index: currentIndex,
             children: [
               const DashboardScreen(),
               const TransactionHistoryScreen(),
@@ -44,8 +40,8 @@ class _MainNavigationContainerState extends State<MainNavigationContainer> {
             right: 0,
             bottom: 0,
             child: KwartaKoBottomNavBar(
-              currentIndex: _currentIndex,
-              onTap: _onTabTapped,
+              currentIndex: currentIndex,
+              onTap: provider.setNavigationIndex,
             ),
           ),
         ],

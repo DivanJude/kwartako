@@ -40,7 +40,15 @@ class LocalAIService {
 
   static Future<bool> isModelDownloaded() async {
     final path = await getModelPath();
-    return File(path).existsSync();
+    final file = File(path);
+    if (!file.existsSync()) return false;
+    try {
+      final length = await file.length();
+      // Expecting at least 300 MB (correct model size is ~379 MB)
+      return length >= 300 * 1024 * 1024;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Downloads the model file from Hugging Face and yields the download progress (0.0 to 1.0)
@@ -79,7 +87,23 @@ class LocalAIService {
         onDone: () async {
           await sink.flush();
           await sink.close();
-          controller.close();
+          
+          try {
+            final fileLength = await file.length();
+            if (contentLength > 0 && fileLength != contentLength) {
+              throw HttpException('Downloaded file size ($fileLength bytes) does not match expected size ($contentLength bytes).');
+            }
+            if (fileLength < 300 * 1024 * 1024) {
+              throw HttpException('Downloaded model file is too small ($fileLength bytes) and may be corrupt.');
+            }
+            controller.close();
+          } catch (err) {
+            if (file.existsSync()) {
+              file.deleteSync();
+            }
+            controller.addError(err);
+            controller.close();
+          }
         },
         onError: (Object e) {
           sink.close();

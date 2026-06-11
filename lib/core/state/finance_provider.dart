@@ -18,6 +18,14 @@ class FinanceProvider extends ChangeNotifier {
   bool _isModelDownloaded = false;
   double _downloadProgress = 0.0;
   bool _isDownloadingModel = false;
+  int _streakCount = 0;
+  String _lastLogDate = '';
+  double _foodRatio = 0.35;
+  double _transRatio = 0.15;
+  double _schoolRatio = 0.25;
+  double _savingsRatio = 0.15;
+  double _othersRatio = 0.10;
+  int _currentNavigationIndex = 0;
   
   List<Expense> _expenses = [];
   List<Debt> _debts = [];
@@ -48,6 +56,46 @@ class FinanceProvider extends ChangeNotifier {
       if (savedOnboarding != null) {
         _hasCompletedOnboarding = savedOnboarding == 'true';
       }
+
+      final savedStreak = await db.getSetting('streakCount');
+      if (savedStreak != null) _streakCount = int.tryParse(savedStreak) ?? 0;
+
+      final savedLastLogDate = await db.getSetting('lastLogDate');
+      if (savedLastLogDate != null) _lastLogDate = savedLastLogDate;
+
+      // Check and reset broken streaks on startup
+      if (_lastLogDate.isNotEmpty) {
+        try {
+          final lastDateParts = _lastLogDate.split('-');
+          final lastDate = DateTime(
+            int.parse(lastDateParts[0]),
+            int.parse(lastDateParts[1]),
+            int.parse(lastDateParts[2]),
+          );
+          final now = DateTime.now();
+          final todayDate = DateTime(now.year, now.month, now.day);
+          final difference = todayDate.difference(lastDate).inDays;
+          if (difference > 1) {
+            _streakCount = 0;
+            await db.setSetting('streakCount', '0');
+          }
+        } catch (_) {}
+      }
+
+      final savedFood = await db.getSetting('budget_ratio_food');
+      if (savedFood != null) _foodRatio = double.tryParse(savedFood) ?? 0.35;
+
+      final savedTrans = await db.getSetting('budget_ratio_trans');
+      if (savedTrans != null) _transRatio = double.tryParse(savedTrans) ?? 0.15;
+
+      final savedSchool = await db.getSetting('budget_ratio_school');
+      if (savedSchool != null) _schoolRatio = double.tryParse(savedSchool) ?? 0.25;
+
+      final savedSavings = await db.getSetting('budget_ratio_savings');
+      if (savedSavings != null) _savingsRatio = double.tryParse(savedSavings) ?? 0.15;
+
+      final savedOthers = await db.getSetting('budget_ratio_others');
+      if (savedOthers != null) _othersRatio = double.tryParse(savedOthers) ?? 0.10;
 
       _expenses = await db.fetchExpenses();
       _debts = await db.fetchDebts();
@@ -123,16 +171,28 @@ class FinanceProvider extends ChangeNotifier {
   }
 
   Future<void> generateAICoachFeedback() async {
-    if (!_isModelDownloaded) return;
+    final hasGeminiKey = _geminiApiKey.trim().isNotEmpty;
+    if ((!_isModelDownloaded && !hasGeminiKey) || _isGeneratingAI) return;
     _isGeneratingAI = true;
     notifyListeners();
     try {
-      final result = await LocalAIService.generateFeedback(
-        userName: _userName,
-        allowance: _allowance,
-        expenses: weeklyExpenses,
-        debts: _debts,
-      );
+      final AIServiceResult result;
+      if (hasGeminiKey) {
+        result = await AIService.generateFeedback(
+          apiKey: _geminiApiKey,
+          userName: _userName,
+          allowance: _allowance,
+          expenses: weeklyExpenses,
+          debts: _debts,
+        );
+      } else {
+        result = await LocalAIService.generateFeedback(
+          userName: _userName,
+          allowance: _allowance,
+          expenses: weeklyExpenses,
+          debts: _debts,
+        );
+      }
       
       _insights = result.insights;
       _reflection = result.reflection;
@@ -140,7 +200,7 @@ class FinanceProvider extends ChangeNotifier {
       await DatabaseHelper.instance.saveAllInsights(_insights);
       await DatabaseHelper.instance.saveReflection(_reflection);
     } catch (e) {
-      debugPrint("Local AI generation error: $e");
+      debugPrint("AI Coach generation error: $e");
     } finally {
       _isGeneratingAI = false;
       notifyListeners();
@@ -158,6 +218,102 @@ class FinanceProvider extends ChangeNotifier {
   bool get isModelDownloaded => _isModelDownloaded;
   double get downloadProgress => _downloadProgress;
   bool get isDownloadingModel => _isDownloadingModel;
+  int get streakCount {
+    if (_lastLogDate.isEmpty) return 0;
+    try {
+      final lastDateParts = _lastLogDate.split('-');
+      final lastDate = DateTime(
+        int.parse(lastDateParts[0]),
+        int.parse(lastDateParts[1]),
+        int.parse(lastDateParts[2]),
+      );
+      final now = DateTime.now();
+      final todayDate = DateTime(now.year, now.month, now.day);
+      final difference = todayDate.difference(lastDate).inDays;
+      if (difference > 1) {
+        return 0;
+      }
+    } catch (_) {
+      return 0;
+    }
+    return _streakCount;
+  }
+  String get lastLogDate => _lastLogDate;
+
+  int get currentNavigationIndex => _currentNavigationIndex;
+  
+  void setNavigationIndex(int index) {
+    _currentNavigationIndex = index;
+    notifyListeners();
+  }
+
+  String get disciplineLevel {
+    if (_disciplineScore >= 9.0) return 'Centavo Sage 🌟';
+    if (_disciplineScore >= 7.5) return 'Thrifty Scholar 🎓';
+    if (_disciplineScore >= 5.0) return 'Budget Balancer ⚖️';
+    if (_disciplineScore >= 3.0) return 'Loose Spender 💸';
+    return 'Bankruptcy Warning ⚠️';
+  }
+
+  // Budget Category limits & expenditures
+  double getCategoryBudget(ExpenseCategory category) {
+    switch (category) {
+      case ExpenseCategory.food:
+        return _allowance * _foodRatio;
+      case ExpenseCategory.transportation:
+        return _allowance * _transRatio;
+      case ExpenseCategory.school:
+        return _allowance * _schoolRatio;
+      case ExpenseCategory.savings:
+        return _allowance * _savingsRatio;
+      case ExpenseCategory.others:
+        return _allowance * _othersRatio;
+      case ExpenseCategory.loadInternet:
+      case ExpenseCategory.wants:
+      case ExpenseCategory.emergency:
+        return double.infinity;
+    }
+  }
+
+  double getCategorySpent(ExpenseCategory category) {
+    return weeklyExpenses
+        .where((e) => e.category == category)
+        .fold(0.0, (sum, e) => sum + e.amount);
+  }
+
+  // Discipline Score Parameter Breakdowns
+  double get spentRatioPenalty {
+    final spentRatio = _allowance > 0 ? totalSpent / _allowance : 0.0;
+    if (spentRatio > 1.0) return -3.0;
+    if (spentRatio > 0.8) return -1.5;
+    if (spentRatio > 0.5) return -0.5;
+    return 0.0;
+  }
+
+  double get wantsRatioPenalty {
+    final wantsSpent = weeklyExpenses
+        .where((e) => e.category == ExpenseCategory.wants)
+        .fold(0.0, (sum, e) => sum + e.amount);
+    final wantsRatio = totalSpent > 0 ? wantsSpent / totalSpent : 0.0;
+    if (wantsRatio > 0.5) return -1.5;
+    if (wantsRatio > 0.3) return -0.8;
+    return 0.0;
+  }
+
+  double get overdueDebtsPenalty {
+    final overdueCount = _debts.where((d) => d.status == DebtStatus.overdue).length;
+    return -(overdueCount * 0.5);
+  }
+
+  void checkInNoSpendDay() {
+    _updateStreak();
+    notifyListeners();
+  }
+  double get foodRatio => _foodRatio;
+  double get transRatio => _transRatio;
+  double get schoolRatio => _schoolRatio;
+  double get savingsRatio => _savingsRatio;
+  double get othersRatio => _othersRatio;
   List<Expense> get expenses => List.unmodifiable(_expenses);
   List<Debt> get debts => List.unmodifiable(_debts);
   List<Insight> get insights => List.unmodifiable(_insights);
@@ -182,8 +338,23 @@ class FinanceProvider extends ChangeNotifier {
     return weeklyExpenses.fold(0.0, (sum, item) => sum + item.amount);
   }
 
+  double get weeklyInflow {
+    final start = startOfCurrentWeek;
+    double sum = 0.0;
+    for (var debt in _debts) {
+      if (!debt.isIOwe) {
+        for (var payment in debt.payments) {
+          if (payment.date.isAfter(start) || payment.date.isAtSameMomentAs(start)) {
+            sum += payment.amount;
+          }
+        }
+      }
+    }
+    return sum;
+  }
+
   double get remainingAllowance {
-    return _allowance - totalSpent;
+    return _allowance + weeklyInflow - totalSpent;
   }
 
   double get totalOwedToMe {
@@ -213,14 +384,43 @@ class FinanceProvider extends ChangeNotifier {
     generateAICoachFeedback();
   }
 
+  void saveBudgetPlan({
+    required double allowance,
+    required double food,
+    required double trans,
+    required double school,
+    required double savings,
+    required double others,
+  }) {
+    _allowance = allowance;
+    _foodRatio = food;
+    _transRatio = trans;
+    _schoolRatio = school;
+    _savingsRatio = savings;
+    _othersRatio = others;
+
+    final db = DatabaseHelper.instance;
+    db.setSetting('allowance', allowance.toString());
+    db.setSetting('budget_ratio_food', food.toString());
+    db.setSetting('budget_ratio_trans', trans.toString());
+    db.setSetting('budget_ratio_school', school.toString());
+    db.setSetting('budget_ratio_savings', savings.toString());
+    db.setSetting('budget_ratio_others', others.toString());
+
+    _recalculateDisciplineScore();
+    notifyListeners();
+    generateAICoachFeedback();
+  }
+
   void addExpense({
     required double amount,
     required ExpenseCategory category,
     required String note,
     required DateTime date,
+    String? id,
   }) {
     final newExpense = Expense(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       amount: amount,
       category: category,
       note: note,
@@ -229,10 +429,44 @@ class FinanceProvider extends ChangeNotifier {
     _expenses.insert(0, newExpense);
     DatabaseHelper.instance.insertExpense(newExpense);
     
+    _updateStreak();
     _checkAndTriggerInsights(category, amount);
     _recalculateDisciplineScore();
     notifyListeners();
     generateAICoachFeedback();
+  }
+
+  void _updateStreak() {
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month}-${now.day}";
+
+    if (_lastLogDate.isEmpty) {
+      _streakCount = 1;
+    } else {
+      try {
+        final lastDateParts = _lastLogDate.split('-');
+        final lastDate = DateTime(
+          int.parse(lastDateParts[0]),
+          int.parse(lastDateParts[1]),
+          int.parse(lastDateParts[2]),
+        );
+        final todayDate = DateTime(now.year, now.month, now.day);
+        final difference = todayDate.difference(lastDate).inDays;
+
+        if (difference == 1) {
+          _streakCount += 1;
+        } else if (difference > 1) {
+          _streakCount = 1;
+        }
+        // If difference == 0 (logged today already), do nothing, keep current streak.
+      } catch (_) {
+        _streakCount = 1;
+      }
+    }
+
+    _lastLogDate = todayStr;
+    DatabaseHelper.instance.setSetting('streakCount', _streakCount.toString());
+    DatabaseHelper.instance.setSetting('lastLogDate', _lastLogDate);
   }
 
   void deleteExpense(String id) {
@@ -249,27 +483,65 @@ class FinanceProvider extends ChangeNotifier {
     required bool isIOwe,
     required DateTime dueDate,
   }) {
-    final newDebt = Debt(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: name,
-      originalAmount: amount,
-      remainingAmount: amount,
-      dueDate: dueDate,
-      isIOwe: isIOwe,
-      status: DebtStatus.pending,
-      payments: const [],
-    );
-    _debts.insert(0, newDebt);
-    DatabaseHelper.instance.insertDebt(newDebt);
+    final trimmedName = name.trim();
+    final existingIndex = _debts.indexWhere((d) =>
+        d.name.trim().toLowerCase() == trimmedName.toLowerCase() &&
+        d.isIOwe == isIOwe &&
+        d.status != DebtStatus.paid);
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final calculatedStatus = dueDate.isBefore(todayStart) ? DebtStatus.overdue : DebtStatus.pending;
+
+    if (existingIndex != -1) {
+      final oldDebt = _debts[existingIndex];
+      final updatedDebt = Debt(
+        id: oldDebt.id,
+        name: oldDebt.name,
+        originalAmount: oldDebt.originalAmount + amount,
+        remainingAmount: oldDebt.remainingAmount + amount,
+        dueDate: dueDate,
+        isIOwe: oldDebt.isIOwe,
+        status: calculatedStatus,
+        payments: oldDebt.payments,
+      );
+      _debts[existingIndex] = updatedDebt;
+      DatabaseHelper.instance.updateDebt(updatedDebt);
+    } else {
+      final newDebt = Debt(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: trimmedName,
+        originalAmount: amount,
+        remainingAmount: amount,
+        dueDate: dueDate,
+        isIOwe: isIOwe,
+        status: calculatedStatus,
+        payments: const [],
+      );
+      _debts.insert(0, newDebt);
+      DatabaseHelper.instance.insertDebt(newDebt);
+    }
+    _recalculateDisciplineScore();
     notifyListeners();
     generateAICoachFeedback();
   }
 
   void deleteDebt(String id) {
-    _debts.removeWhere((d) => d.id == id);
-    DatabaseHelper.instance.deleteDebt(id);
-    notifyListeners();
-    generateAICoachFeedback();
+    final index = _debts.indexWhere((d) => d.id == id);
+    if (index != -1) {
+      final debt = _debts[index];
+      if (debt.isIOwe) {
+        for (var payment in debt.payments) {
+          _expenses.removeWhere((e) => e.id == 'pay_${payment.id}');
+          DatabaseHelper.instance.deleteExpense('pay_${payment.id}');
+        }
+      }
+      _debts.removeAt(index);
+      DatabaseHelper.instance.deleteDebt(id);
+      _recalculateDisciplineScore();
+      notifyListeners();
+      generateAICoachFeedback();
+    }
   }
 
   void payPartialDebt(String debtId, double paymentAmount) {
@@ -277,7 +549,12 @@ class FinanceProvider extends ChangeNotifier {
     if (index != -1) {
       final oldDebt = _debts[index];
       final newRemaining = (oldDebt.remainingAmount - paymentAmount).clamp(0.0, oldDebt.originalAmount);
-      final newStatus = newRemaining == 0.0 ? DebtStatus.paid : oldDebt.status;
+      
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final newStatus = newRemaining == 0.0
+          ? DebtStatus.paid
+          : (oldDebt.dueDate.isBefore(todayStart) ? DebtStatus.overdue : oldDebt.status);
       
       final newPayment = DebtPayment(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -302,8 +579,20 @@ class FinanceProvider extends ChangeNotifier {
       _debts[index] = updatedDebt;
       DatabaseHelper.instance.updateDebt(updatedDebt);
       DatabaseHelper.instance.insertDebtPayment(debtId, newPayment);
-      notifyListeners();
-      generateAICoachFeedback();
+
+      if (oldDebt.isIOwe) {
+        addExpense(
+          amount: paymentAmount,
+          category: ExpenseCategory.others,
+          note: 'Paid debt to ${oldDebt.name}',
+          date: DateTime.now(),
+          id: 'pay_${newPayment.id}',
+        );
+      } else {
+        _recalculateDisciplineScore();
+        notifyListeners();
+        generateAICoachFeedback();
+      }
     }
   }
 
@@ -314,10 +603,11 @@ class FinanceProvider extends ChangeNotifier {
       
       final updatedPayments = List<DebtPayment>.from(oldDebt.payments);
       DebtPayment? newPayment;
-      if (oldDebt.remainingAmount > 0) {
+      final remainingAmount = oldDebt.remainingAmount;
+      if (remainingAmount > 0) {
         newPayment = DebtPayment(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
-          amount: oldDebt.remainingAmount,
+          amount: remainingAmount,
           date: DateTime.now(),
         );
         updatedPayments.add(newPayment);
@@ -339,8 +629,62 @@ class FinanceProvider extends ChangeNotifier {
       if (newPayment != null) {
         DatabaseHelper.instance.insertDebtPayment(debtId, newPayment);
       }
-      notifyListeners();
-      generateAICoachFeedback();
+
+      if (oldDebt.isIOwe && remainingAmount > 0) {
+        addExpense(
+          amount: remainingAmount,
+          category: ExpenseCategory.others,
+          note: 'Paid debt to ${oldDebt.name}',
+          date: DateTime.now(),
+          id: 'pay_${newPayment!.id}',
+        );
+      } else {
+        _recalculateDisciplineScore();
+        notifyListeners();
+        generateAICoachFeedback();
+      }
+    }
+  }
+
+  Future<void> deleteDebtPayment(String debtId, String paymentId) async {
+    final index = _debts.indexWhere((d) => d.id == debtId);
+    if (index != -1) {
+      final oldDebt = _debts[index];
+      final paymentIndex = oldDebt.payments.indexWhere((p) => p.id == paymentId);
+      if (paymentIndex != -1) {
+        final payment = oldDebt.payments[paymentIndex];
+        final updatedPayments = List<DebtPayment>.from(oldDebt.payments)..removeAt(paymentIndex);
+        final newRemaining = oldDebt.remainingAmount + payment.amount;
+
+        final now = DateTime.now();
+        final todayStart = DateTime(now.year, now.month, now.day);
+        final newStatus = newRemaining <= 0.0
+            ? DebtStatus.paid
+            : (oldDebt.dueDate.isBefore(todayStart) ? DebtStatus.overdue : DebtStatus.pending);
+
+        final updatedDebt = Debt(
+          id: oldDebt.id,
+          name: oldDebt.name,
+          originalAmount: oldDebt.originalAmount,
+          remainingAmount: newRemaining,
+          dueDate: oldDebt.dueDate,
+          isIOwe: oldDebt.isIOwe,
+          status: newStatus,
+          payments: updatedPayments,
+        );
+
+        _debts[index] = updatedDebt;
+        await DatabaseHelper.instance.updateDebt(updatedDebt);
+        await DatabaseHelper.instance.deleteDebtPayment(paymentId);
+
+        if (oldDebt.isIOwe) {
+          deleteExpense('pay_$paymentId');
+        } else {
+          _recalculateDisciplineScore();
+          notifyListeners();
+          generateAICoachFeedback();
+        }
+      }
     }
   }
 

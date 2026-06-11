@@ -250,6 +250,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                   ],
                 ),
               ),
+            _buildAnalyticsPanel(context, filteredExpenses, glassTheme),
 
             // 4. Grouped Transactions List View
             Expanded(
@@ -265,16 +266,28 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Date header separator
+                            // Date header separator with daily total
                             Padding(
-                              padding: const EdgeInsets.only(top: 8.0, bottom: 8.0, left: 4),
-                              child: Text(
-                                dateHeader,
-                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                      color: AppColors.textSecondary,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.5,
-                                    ),
+                              padding: const EdgeInsets.only(top: 12.0, bottom: 8.0, left: 4, right: 4),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    dateHeader,
+                                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                          color: AppColors.textSecondary,
+                                          fontWeight: FontWeight.bold,
+                                          letterSpacing: 0.5,
+                                        ),
+                                  ),
+                                  Text(
+                                    'Total: ₱${expensesForDate.fold(0.0, (sum, e) => sum + e.amount).toStringAsFixed(2)}',
+                                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                          color: AppColors.dangerRed.withOpacity(0.85),
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                  ),
+                                ],
                               ),
                             ),
                             ...expensesForDate.map((expense) => Dismissible(
@@ -412,5 +425,120 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
     return months[month - 1];
+  }
+
+  Widget _buildAnalyticsPanel(
+    BuildContext context,
+    List<Expense> filteredExpenses,
+    GlassThemeExtension? glassTheme,
+  ) {
+    if (filteredExpenses.isEmpty) return const SizedBox.shrink();
+
+    final totalFilteredSpent = filteredExpenses.fold(0.0, (sum, e) => sum + e.amount);
+
+    final Map<ExpenseCategory, double> catTotals = {};
+    for (var e in filteredExpenses) {
+      catTotals[e.category] = (catTotals[e.category] ?? 0.0) + e.amount;
+    }
+
+    ExpenseCategory? topCategory;
+    double topAmount = 0.0;
+    catTotals.forEach((cat, amt) {
+      if (amt > topAmount) {
+        topAmount = amt;
+        topCategory = cat;
+      }
+    });
+
+    if (topCategory == null) return const SizedBox.shrink();
+
+    final othersAmount = totalFilteredSpent - topAmount;
+    final topPercentage = totalFilteredSpent > 0 ? (topAmount / totalFilteredSpent * 100).toStringAsFixed(0) : '0';
+
+    String insightText;
+    if (topAmount > othersAmount) {
+      insightText = 'You spent more on ${topCategory!.displayName} (₱${topAmount.toStringAsFixed(0)}) than all other categories combined (₱${othersAmount.toStringAsFixed(0)})!';
+    } else if (othersAmount > 0) {
+      insightText = 'Highest spending was on ${topCategory!.displayName} (₱${topAmount.toStringAsFixed(0)}), making up $topPercentage% of your total expenditures.';
+    } else {
+      insightText = 'All your spending is within the ${topCategory!.displayName} category so far.';
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: glassTheme?.cardDecoration ?? BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: topCategory!.color.withOpacity(0.15),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: topCategory!.color.withOpacity(0.3),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              Icons.analytics_rounded,
+              color: topCategory!.color,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Spending Analytics',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                    ),
+                    Text(
+                      '₱${totalFilteredSpent.toStringAsFixed(0)} spent',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  insightText,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.textSecondary,
+                        height: 1.4,
+                      ),
+                ),
+                const SizedBox(height: 10),
+                // Visual progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: totalFilteredSpent > 0 ? topAmount / totalFilteredSpent : 0.0,
+                    minHeight: 6,
+                    backgroundColor: Colors.white.withOpacity(0.05),
+                    valueColor: AlwaysStoppedAnimation<Color>(topCategory!.color),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

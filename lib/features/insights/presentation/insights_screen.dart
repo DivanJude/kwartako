@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/state/finance_provider.dart';
-import '../../../core/models/insight.dart';
 import '../../../core/models/expense.dart';
 import '../../../core/widgets/insight_card.dart';
 
@@ -13,8 +12,6 @@ class InsightsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<FinanceProvider>(context);
-    final size = MediaQuery.of(context).size;
-    final glassTheme = Theme.of(context).extension<GlassThemeExtension>();
 
     // Calculate category spending breakdown
     final Map<ExpenseCategory, double> catSpent = {};
@@ -58,7 +55,7 @@ class InsightsScreen extends StatelessWidget {
                 const SizedBox(height: 16),
 
                 // Grid layout of analysis blocks
-                _buildAnalysisGrid(context, mostExpCategory, maxExpAmount, smallExpenses.length, totalSmallSum, provider.totalIOwe),
+                _buildAnalysisGrid(context, mostExpCategory, maxExpAmount, smallExpenses.length, totalSmallSum, provider.totalIOwe, provider.streakCount),
                 const SizedBox(height: 24),
 
                 // Segment title
@@ -94,7 +91,7 @@ class InsightsScreen extends StatelessWidget {
                       ),
                 ),
                 const SizedBox(height: 12),
-                _buildCategoryBreakdownList(context, catSpent, provider.totalSpent),
+                _buildCategoryBreakdownList(context, provider, catSpent, provider.totalSpent),
               ],
             ),
           ),
@@ -110,6 +107,7 @@ class InsightsScreen extends StatelessWidget {
     int smallCount,
     double smallSum,
     double overdueAmt,
+    int streakCount,
   ) {
     final glassTheme = Theme.of(context).extension<GlassThemeExtension>();
 
@@ -141,14 +139,14 @@ class InsightsScreen extends StatelessWidget {
           AppColors.warningYellow,
           glassTheme,
         ),
-        // Card 3: No-Spend Streak
+        // Card 3: Logging Streak
         _buildGridCard(
           context,
-          'No-Spend Streak',
-          '3 Days',
-          'Active earlier',
+          'Logging Streak',
+          '$streakCount Day${streakCount == 1 ? "" : "s"}',
+          streakCount > 0 ? 'Keep logging daily! 🔥' : 'Log daily to start a streak',
           Icons.local_fire_department_rounded,
-          AppColors.secondaryBlue,
+          AppColors.warningYellow,
           glassTheme,
         ),
         // Card 4: Urgent Debt Reminders
@@ -211,7 +209,7 @@ class InsightsScreen extends StatelessWidget {
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: AppColors.textSecondary.withOpacity(0.8), fontSize: 11),
+                style: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.8), fontSize: 11),
               ),
             ],
           ),
@@ -222,6 +220,7 @@ class InsightsScreen extends StatelessWidget {
 
   Widget _buildCategoryBreakdownList(
     BuildContext context,
+    FinanceProvider provider,
     Map<ExpenseCategory, double> catSpent,
     double totalSpent,
   ) {
@@ -235,7 +234,7 @@ class InsightsScreen extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
         alignment: Alignment.center,
-        child: Text(
+        child: const Text(
           'No expenditures logged yet.',
           style: TextStyle(color: AppColors.textSecondary),
         ),
@@ -252,8 +251,27 @@ class InsightsScreen extends StatelessWidget {
         children: sortedEntries.map((entry) {
           final category = entry.key;
           final amount = entry.value;
-          final ratio = totalSpent > 0 ? amount / totalSpent : 0.0;
-          final percentage = (ratio * 100).toStringAsFixed(0);
+
+          // Check if category has a finite budget limit
+          final budget = provider.getCategoryBudget(category);
+          final bool hasBudget = provider.allowance > 0 && budget > 0 && budget != double.infinity;
+          final bool isOverspent = hasBudget && amount > budget;
+
+          final double ratio;
+          final String trailingText;
+          final Color barColor;
+
+          if (hasBudget) {
+            ratio = (amount / budget).clamp(0.0, 1.0);
+            trailingText = '₱${amount.toStringAsFixed(0)} of ₱${budget.toStringAsFixed(0)}';
+            barColor = isOverspent ? AppColors.dangerRed : category.color;
+          } else {
+            final percentageRatio = totalSpent > 0 ? amount / totalSpent : 0.0;
+            ratio = percentageRatio;
+            final percentageStr = (percentageRatio * 100).toStringAsFixed(0);
+            trailingText = '₱${amount.toStringAsFixed(0)} ($percentageStr%)';
+            barColor = category.color;
+          }
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 12.0),
@@ -263,10 +281,10 @@ class InsightsScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: category.color.withOpacity(0.12),
+                    color: barColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(category.icon, color: category.color, size: 16),
+                  child: Icon(category.icon, color: barColor, size: 16),
                 ),
                 const SizedBox(width: 12),
                 // Text details & progress bar
@@ -276,13 +294,36 @@ class InsightsScreen extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            category.displayName,
-                            style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 13),
+                          Row(
+                            children: [
+                              Text(
+                                category.displayName,
+                                style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              if (isOverspent) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.dangerRed.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: AppColors.dangerRed.withValues(alpha: 0.3), width: 0.8),
+                                  ),
+                                  child: const Text(
+                                    'OVERSPENT',
+                                    style: TextStyle(color: AppColors.dangerRed, fontSize: 8, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                           Text(
-                            '₱${amount.toStringAsFixed(0)} ($percentage%)',
-                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                            trailingText,
+                            style: TextStyle(
+                              color: isOverspent ? AppColors.dangerRed : AppColors.textSecondary,
+                              fontWeight: isOverspent ? FontWeight.bold : FontWeight.normal,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -292,8 +333,8 @@ class InsightsScreen extends StatelessWidget {
                         child: LinearProgressIndicator(
                           value: ratio,
                           minHeight: 4,
-                          backgroundColor: Colors.white.withOpacity(0.04),
-                          valueColor: AlwaysStoppedAnimation<Color>(category.color),
+                          backgroundColor: Colors.white.withValues(alpha: 0.04),
+                          valueColor: AlwaysStoppedAnimation<Color>(barColor),
                         ),
                       ),
                     ],

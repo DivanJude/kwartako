@@ -20,7 +20,6 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = Provider.of<FinanceProvider>(context);
     final glassTheme = Theme.of(context).extension<GlassThemeExtension>();
-    final size = MediaQuery.of(context).size;
     final recentExpenses = provider.expenses.take(3).toList();
     final firstInsight = provider.insights.isNotEmpty 
         ? provider.insights.first 
@@ -70,23 +69,67 @@ class DashboardScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-                  _buildDisciplineScoreBadge(context, provider.disciplineScore),
+                  Row(
+                    children: [
+                      if (provider.streakCount > 0) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.warningYellow.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppColors.warningYellow.withValues(alpha: 0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.local_fire_department_rounded, color: AppColors.warningYellow, size: 14),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${provider.streakCount}d Streak',
+                                style: const TextStyle(color: AppColors.warningYellow, fontWeight: FontWeight.bold, fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      GestureDetector(
+                        onTap: () => _showDisciplineScoreBreakdown(context, provider),
+                        child: _buildDisciplineScoreBadge(context, provider.disciplineScore),
+                      ),
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 24),
 
               // Weekly Summary Metric Card
               WeeklySummaryCard(
-                allowance: provider.allowance,
+                allowance: provider.allowance + provider.weeklyInflow,
                 totalSpent: provider.totalSpent,
                 remaining: provider.remainingAllowance,
                 onReflectTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Saturday Night Reflection is unlocked on Saturday night!'),
-                      backgroundColor: AppColors.surface,
-                    ),
-                  );
+                  if (DateTime.now().weekday == DateTime.saturday) {
+                    Navigator.of(context).push(
+                      PageRouteBuilder(
+                        pageBuilder: (context, animation, secondaryAnimation) => const SaturdayReflectionScreen(),
+                        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                          final tween = Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
+                              .chain(CurveTween(curve: Curves.easeOutCubic));
+                          return SlideTransition(
+                            position: animation.drive(tween),
+                            child: child,
+                          );
+                        },
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Saturday Night Reflection is unlocked on Saturday night!'),
+                        backgroundColor: AppColors.surface,
+                      ),
+                    );
+                  }
                 },
               ),
               if (provider.allowance == 0.0) ...[
@@ -120,12 +163,60 @@ class DashboardScreen extends StatelessWidget {
                               const SizedBox(height: 2),
                               Text(
                                 'Tap to set allowance and generate budget plan!',
-                                style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 11),
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 11),
                               ),
                             ],
                           ),
                         ),
                         const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 14),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else if (!provider.expenses.any((e) {
+                final now = DateTime.now();
+                return e.date.year == now.year && e.date.month == now.month && e.date.day == now.day;
+              }) && provider.lastLogDate != "${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}") ...[
+                const SizedBox(height: 16),
+                GestureDetector(
+                  onTap: () {
+                    provider.checkInNoSpendDay();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('🎉 Streak Maintained! Checked in for a No-Spend Day. Keep saving!'),
+                        backgroundColor: AppColors.successGreen,
+                      ),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.successGreen, AppColors.accentCyan],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.flash_on_rounded, color: Colors.white, size: 22),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'No-Spend Day Check-In',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Tap to check-in as a No-Spend Day today and keep your streak alive!',
+                                style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 11),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 20),
                       ],
                     ),
                   ),
@@ -142,6 +233,8 @@ class DashboardScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               _buildQuickActionGrid(context),
+              const SizedBox(height: 20),
+              _buildQuickLogShortcuts(context, provider),
               const SizedBox(height: 24),
 
               // Coach Recommendation Card
@@ -172,14 +265,14 @@ class DashboardScreen extends StatelessWidget {
                     ],
                   ),
                 )
-              else if (!provider.isModelDownloaded)
+              else if (!provider.isModelDownloaded && provider.geminiApiKey.isEmpty)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: glassTheme?.cardDecoration ?? BoxDecoration(
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.warningYellow.withOpacity(0.3)),
+                    border: Border.all(color: AppColors.warningYellow.withValues(alpha: 0.3)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -259,13 +352,7 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   TextButton(
                     onPressed: () {
-                      // We will implement transition in next screens
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Use the History tab at the bottom to view all!'),
-                          backgroundColor: AppColors.surface,
-                        ),
-                      );
+                      provider.setNavigationIndex(1); // Redirect to History tab
                     },
                     child: const Text(
                       'See All',
@@ -295,20 +382,18 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Widget _buildDisciplineScoreBadge(BuildContext context, double score) {
-    final glassTheme = Theme.of(context).extension<GlassThemeExtension>();
-    
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppColors.surface.withOpacity(0.5),
+        color: AppColors.surface.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: AppColors.primaryBlue.withOpacity(0.25),
+          color: AppColors.primaryBlue.withValues(alpha: 0.25),
           width: 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryBlue.withOpacity(0.04),
+            color: AppColors.primaryBlue.withValues(alpha: 0.04),
             blurRadius: 10,
           ),
         ],
@@ -354,6 +439,134 @@ class DashboardScreen extends StatelessWidget {
       ),
     );
   }
+
+  void _showDisciplineScoreBreakdown(BuildContext context, FinanceProvider provider) {
+    final spentPenalty = provider.spentRatioPenalty;
+    final wantsPenalty = provider.wantsRatioPenalty;
+    final overduePenalty = provider.overdueDebtsPenalty;
+    final score = provider.disciplineScore;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(24),
+              topRight: Radius.circular(24),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Discipline Score Breakdown',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Financial Rank: ${provider.disciplineLevel}',
+                style: const TextStyle(
+                  color: AppColors.accentCyan,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Your score starts at 10.0 and is updated dynamically based on your spending habits and overdue debts.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
+               ),
+               const SizedBox(height: 20),
+               
+               // Base Score
+               _buildBreakdownRow(context, 'Base Score', 10.0, Colors.white, isBase: true),
+               const Divider(color: Colors.white10, height: 20),
+
+               // weekly spent ratio penalty row
+               _buildBreakdownRow(
+                 context, 
+                 'Weekly Allowance Limit', 
+                 spentPenalty, 
+                 spentPenalty < 0 ? AppColors.dangerRed : AppColors.successGreen,
+                 subtitle: spentPenalty < 0 ? 'Overspent weekly allowance' : 'Stayed within weekly budget limit',
+               ),
+               const SizedBox(height: 12),
+
+               // wants spending ratio penalty row
+               _buildBreakdownRow(
+                 context, 
+                 'Wants Spending Ratio', 
+                 wantsPenalty, 
+                 wantsPenalty < 0 ? AppColors.dangerRed : AppColors.successGreen,
+                 subtitle: wantsPenalty < 0 ? 'More than 30% spent on wants' : 'Wants kept under control',
+               ),
+               const SizedBox(height: 12),
+
+               // overdue debts penalty row
+               _buildBreakdownRow(
+                 context, 
+                 'Overdue Debts Penalty', 
+                 overduePenalty, 
+                 overduePenalty < 0 ? AppColors.dangerRed : AppColors.successGreen,
+                 subtitle: overduePenalty < 0 ? '${(overduePenalty / -0.5).round()} overdue debts active' : 'No overdue debts',
+               ),
+               const Divider(color: Colors.white10, height: 20),
+
+               // Final Score Row
+               _buildBreakdownRow(context, 'Final Score', score, AppColors.accentCyan, isFinal: true),
+               const SizedBox(height: 12),
+             ],
+           ),
+         );
+       },
+     );
+   }
+
+   Widget _buildBreakdownRow(BuildContext context, String title, double val, Color valColor, {String? subtitle, bool isBase = false, bool isFinal = false}) {
+     final valStr = isBase ? '10.0' : (isFinal ? '$val/10' : (val == 0.0 ? '0.0' : val.toStringAsFixed(1)));
+     return Row(
+       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+       children: [
+         Expanded(
+           child: Column(
+             crossAxisAlignment: CrossAxisAlignment.start,
+             children: [
+               Text(
+                 title,
+                 style: TextStyle(
+                   fontWeight: (isBase || isFinal) ? FontWeight.bold : FontWeight.normal,
+                   fontSize: (isBase || isFinal) ? 14 : 13,
+                   color: AppColors.textPrimary,
+                 ),
+               ),
+               if (subtitle != null) ...[
+                 const SizedBox(height: 2),
+                 Text(
+                   subtitle,
+                   style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                 ),
+               ],
+             ],
+           ),
+         ),
+         Text(
+           valStr,
+           style: TextStyle(
+             fontWeight: FontWeight.bold,
+             fontSize: (isBase || isFinal) ? 16 : 14,
+             color: valColor,
+           ),
+         ),
+       ],
+     );
+   }
 
   Widget _buildQuickActionGrid(BuildContext context) {
     return Row(
@@ -568,9 +781,9 @@ class DashboardScreen extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.03),
+                        color: Colors.white.withValues(alpha: 0.03),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -601,22 +814,39 @@ class DashboardScreen extends StatelessWidget {
                     child: ElevatedButton(
                       onPressed: () {
                         final name = nameController.text.trim();
-                        final amount = double.tryParse(amountController.text) ?? 0.0;
-                        if (name.isNotEmpty && amount > 0) {
-                          provider.addDebt(
-                            name: name,
-                            amount: amount,
-                            isIOwe: isIOwe,
-                            dueDate: selectedDate,
-                          );
-                          Navigator.of(context).pop();
+                        final amountText = amountController.text.trim().replaceAll(',', '');
+                        final amount = double.tryParse(amountText) ?? 0.0;
+                        if (name.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Successfully recorded debt for $name!'),
-                              backgroundColor: AppColors.successGreen,
+                            const SnackBar(
+                              content: Text('Please enter a valid name.'),
+                              backgroundColor: AppColors.dangerRed,
                             ),
                           );
+                          return;
                         }
+                        if (amount <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please enter an amount greater than 0.'),
+                              backgroundColor: AppColors.dangerRed,
+                            ),
+                          );
+                          return;
+                        }
+                        provider.addDebt(
+                          name: name,
+                          amount: amount,
+                          isIOwe: isIOwe,
+                          dueDate: selectedDate,
+                        );
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Successfully recorded debt for $name!'),
+                            backgroundColor: AppColors.successGreen,
+                          ),
+                        );
                       },
                       child: const Text('Save Record'),
                     ),
@@ -638,5 +868,90 @@ class DashboardScreen extends StatelessWidget {
       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
     return '${days[now.weekday % 7]}, ${months[now.month - 1]} ${now.day}';
+  }
+
+  Widget _buildQuickLogShortcuts(BuildContext context, FinanceProvider provider) {
+    final glassTheme = Theme.of(context).extension<GlassThemeExtension>();
+    
+    final List<Map<String, dynamic>> shortcuts = [
+      {'name': 'Jeepney ₱15', 'amount': 15.0, 'cat': ExpenseCategory.transportation, 'note': 'Jeepney fare', 'icon': Icons.directions_bus_rounded},
+      {'name': 'Coffee ₱50', 'amount': 50.0, 'cat': ExpenseCategory.wants, 'note': 'Coffee', 'icon': Icons.coffee_rounded},
+      {'name': 'Lunch ₱100', 'amount': 100.0, 'cat': ExpenseCategory.food, 'note': 'School lunch', 'icon': Icons.lunch_dining_rounded},
+      {'name': 'Internet ₱50', 'amount': 50.0, 'cat': ExpenseCategory.others, 'note': 'Mobile data load', 'icon': Icons.wifi_rounded},
+      {'name': 'Snacks ₱30', 'amount': 30.0, 'cat': ExpenseCategory.food, 'note': 'Merenda snacks', 'icon': Icons.cookie_rounded},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.flash_on_rounded, color: AppColors.accentCyan, size: 18),
+            const SizedBox(width: 6),
+            Text(
+              'Quick-Log (2-Second Log)',
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 38,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: shortcuts.length,
+            itemBuilder: (context, index) {
+              final shortcut = shortcuts[index];
+              final ExpenseCategory category = shortcut['cat'] as ExpenseCategory;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: InkWell(
+                  onTap: () {
+                    provider.addExpense(
+                      amount: shortcut['amount'] as double,
+                      category: category,
+                      note: shortcut['note'] as String,
+                      date: DateTime.now(),
+                    );
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Quick-logged: ₱${shortcut['amount']} for "${shortcut['note']}"!'),
+                        backgroundColor: AppColors.successGreen,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: glassTheme?.cardDecoration ?? BoxDecoration(
+                      color: AppColors.surface.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(shortcut['icon'] as IconData, size: 14, color: category.color),
+                        const SizedBox(width: 6),
+                        Text(
+                          shortcut['name'] as String,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: category.color,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }

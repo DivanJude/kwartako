@@ -27,7 +27,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   void _saveExpense() {
-    final amountText = _amountController.text.trim();
+    final amountText = _amountController.text.trim().replaceAll(',', '');
     final amount = double.tryParse(amountText) ?? 0.0;
     final note = _noteController.text.trim();
 
@@ -42,6 +42,47 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
 
     final provider = Provider.of<FinanceProvider>(context, listen: false);
+
+    // Check if category budget is exceeded
+    if (provider.allowance > 0.0) {
+      final budget = provider.getCategoryBudget(_selectedCategory);
+      final currentSpent = provider.getCategorySpent(_selectedCategory);
+      if (currentSpent + amount > budget) {
+        final overspend = (currentSpent + amount) - budget;
+        showDialog(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              backgroundColor: AppColors.surface,
+              title: const Text('⚠️ Budget Warning', style: TextStyle(color: AppColors.warningYellow)),
+              content: Text(
+                'This expense will exceed your weekly budget for ${_selectedCategory.displayName} by ₱${overspend.toStringAsFixed(2)}.\n\nAre you sure you want to log it?',
+                style: const TextStyle(color: AppColors.textSecondary),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // close warning dialog
+                    _executeSave(provider, amount, note);
+                  },
+                  child: const Text('Log Anyway', style: TextStyle(color: AppColors.dangerRed, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+        return;
+      }
+    }
+
+    _executeSave(provider, amount, note);
+  }
+
+  void _executeSave(FinanceProvider provider, double amount, String note) {
     provider.addExpense(
       amount: amount,
       category: _selectedCategory,
@@ -222,6 +263,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: _noteController,
+                maxLength: 100,
+                buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
                 decoration: const InputDecoration(
                   hintText: 'What did you buy? e.g., Chicken Joy, Jeepney, Books',
                 ),

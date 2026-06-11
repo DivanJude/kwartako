@@ -26,6 +26,9 @@ class DatabaseHelper {
       path,
       version: 1,
       onCreate: _createDB,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
     );
   }
 
@@ -106,7 +109,7 @@ class DatabaseHelper {
     await _seedDefaults(db);
   }
 
-  Future<void> _seedDefaults(Database db) async {
+  Future<void> _seedDefaults(DatabaseExecutor db) async {
     // User Settings
     await db.insert('settings', {'key': 'userName', 'value': 'Alex'});
     await db.insert('settings', {'key': 'allowance', 'value': '0.0'});
@@ -192,19 +195,21 @@ class DatabaseHelper {
 
   Future<void> insertDebt(Debt debt) async {
     final db = await instance.database;
-    await db.insert(
-      'debts',
-      debt.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-    // Write payments
-    for (var payment in debt.payments) {
-      await db.insert(
-        'debt_payments',
-        payment.toMap(debt.id),
+    await db.transaction((txn) async {
+      await txn.insert(
+        'debts',
+        debt.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
-    }
+      // Write payments inside the transaction context
+      for (var payment in debt.payments) {
+        await txn.insert(
+          'debt_payments',
+          payment.toMap(debt.id),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
   }
 
   Future<void> updateDebt(Debt debt) async {
@@ -230,6 +235,11 @@ class DatabaseHelper {
     final db = await instance.database;
     await db.delete('debts', where: 'id = ?', whereArgs: [id]);
     await db.delete('debt_payments', where: 'debtId = ?', whereArgs: [id]);
+  }
+
+  Future<void> deleteDebtPayment(String paymentId) async {
+    final db = await instance.database;
+    await db.delete('debt_payments', where: 'id = ?', whereArgs: [paymentId]);
   }
 
   // --- INSIGHTS CRUD ---
@@ -287,12 +297,14 @@ class DatabaseHelper {
   // --- WIPE DATABASE ---
   Future<void> clearAllData() async {
     final db = await instance.database;
-    await db.delete('settings');
-    await db.delete('expenses');
-    await db.delete('debts');
-    await db.delete('debt_payments');
-    await db.delete('weekly_reflections');
-    await db.delete('insights');
-    await _seedDefaults(db);
+    await db.transaction((txn) async {
+      await txn.delete('settings');
+      await txn.delete('expenses');
+      await txn.delete('debts');
+      await txn.delete('debt_payments');
+      await txn.delete('weekly_reflections');
+      await txn.delete('insights');
+      await _seedDefaults(txn);
+    });
   }
 }

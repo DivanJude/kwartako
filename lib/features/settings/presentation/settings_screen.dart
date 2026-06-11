@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/state/finance_provider.dart';
@@ -13,8 +15,6 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _notificationsEnabled = true;
-  bool _pinLockEnabled = false;
 
   void _showProfileDialog(BuildContext context) {
     final provider = Provider.of<FinanceProvider>(context, listen: false);
@@ -60,6 +60,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showGeminiKeyDialog(BuildContext context) {
+    final provider = Provider.of<FinanceProvider>(context, listen: false);
+    final keyController = TextEditingController(text: provider.geminiApiKey);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: const Text('Gemini API Key', style: TextStyle(color: AppColors.textPrimary)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                 'Enter your Gemini API key to enable online AI Coach feedback, bypassing the 350MB local model download.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: keyController,
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: const InputDecoration(
+                  hintText: 'Enter API Key (AIzaSy...)',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            TextButton(
+              onPressed: () {
+                provider.setGeminiApiKey(keyController.text.trim());
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Gemini API Key saved!'),
+                    backgroundColor: AppColors.successGreen,
+                  ),
+                );
+              },
+              child: const Text('Save', style: TextStyle(color: AppColors.primaryBlue, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showDownloadDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -83,7 +135,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   if (provider.isDownloadingModel) ...[
                     LinearProgressIndicator(
                       value: provider.downloadProgress,
-                      backgroundColor: Colors.white.withOpacity(0.05),
+                      backgroundColor: Colors.white.withValues(alpha: 0.05),
                       valueColor: const AlwaysStoppedAnimation<Color>(AppColors.accentCyan),
                     ),
                     const SizedBox(height: 12),
@@ -256,24 +308,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         )),
             ),
             const SizedBox(height: 8),
-            _buildSwitchRow(
+            _buildSettingsRow(
               context,
-              'Weekly Notifications',
-              'Reminders for Sat reflections & Sun budgeting',
-              Icons.notifications_active_outlined,
-              AppColors.accentCyan,
-              _notificationsEnabled,
-              (val) => setState(() => _notificationsEnabled = val),
-            ),
-            const SizedBox(height: 8),
-            _buildSwitchRow(
-              context,
-              'PIN Security Lock',
-              'Lock app on app relaunch',
-              Icons.lock_outline_rounded,
-              AppColors.warningYellow,
-              _pinLockEnabled,
-              (val) => setState(() => _pinLockEnabled = val),
+              'Gemini API Key',
+              provider.geminiApiKey.isEmpty ? 'Offline fallback. Tap to set key' : '•••••••••••••••• (Active)',
+              Icons.api_rounded,
+              AppColors.primaryBlue,
+              onTap: () => _showGeminiKeyDialog(context),
+              trailing: provider.geminiApiKey.isNotEmpty
+                  ? const Text(
+                      'ACTIVE',
+                      style: TextStyle(color: AppColors.successGreen, fontSize: 11, fontWeight: FontWeight.bold),
+                    )
+                  : const Text(
+                      'OPTIONAL',
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.bold),
+                    ),
             ),
             const SizedBox(height: 8),
             _buildSettingsRow(
@@ -297,29 +347,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Download all transactions locally',
               Icons.download_rounded,
               AppColors.successGreen,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('CSV successfully exported to Documents/kwartako_spends.csv!'),
-                    backgroundColor: AppColors.successGreen,
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            _buildSettingsRow(
-              context,
-              'Cloud Backup',
-              'Sync records with online coach backup',
-              Icons.cloud_upload_outlined,
-              AppColors.primaryBlue,
-              onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Backup synced successfully!'),
-                    backgroundColor: AppColors.surface,
-                  ),
-                );
+              onTap: () async {
+                try {
+                  final provider = Provider.of<FinanceProvider>(context, listen: false);
+                  final directory = await getApplicationDocumentsDirectory();
+                  final path = "${directory.path}/kwartako_spends.csv";
+                  final file = File(path);
+                  
+                  final buffer = StringBuffer();
+                  buffer.writeln("ID,Amount,Category,Note,Date");
+                  for (var expense in provider.expenses) {
+                    final escapedNote = expense.note.replaceAll('"', '""');
+                    buffer.writeln("${expense.id},${expense.amount},${expense.category.name},\"$escapedNote\",${expense.date.toIso8601String()}");
+                  }
+                  await file.writeAsString(buffer.toString());
+
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('CSV successfully exported to:\n$path'),
+                      backgroundColor: AppColors.successGreen,
+                      duration: const Duration(seconds: 4),
+                    ),
+                  );
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Export failed: $e'),
+                      backgroundColor: AppColors.dangerRed,
+                    ),
+                  );
+                }
               },
             ),
             const SizedBox(height: 24),
@@ -342,7 +401,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'KwartaKo Coach v1.0.0\nDesigned for Android',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: AppColors.textSecondary.withOpacity(0.5),
+                  color: AppColors.textSecondary.withValues(alpha: 0.5),
                   fontSize: 11,
                   height: 1.5,
                 ),
@@ -391,7 +450,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, color: color, size: 20),
@@ -405,50 +464,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
         ),
         trailing: trailing ?? const Icon(Icons.arrow_forward_ios_rounded, color: AppColors.textSecondary, size: 14),
-      ),
-    );
-  }
-
-  Widget _buildSwitchRow(
-    BuildContext context,
-    String title,
-    String subtitle,
-    IconData icon,
-    Color color,
-    bool value,
-    ValueChanged<bool> onChanged,
-  ) {
-    final glassTheme = Theme.of(context).extension<GlassThemeExtension>();
-
-    return Container(
-      decoration: glassTheme?.cardDecoration ?? BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ListTile(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: color, size: 20),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
-        ),
-        trailing: Switch(
-          value: value,
-          onChanged: onChanged,
-          activeColor: AppColors.primaryBlue,
-          activeTrackColor: AppColors.primaryBlue.withOpacity(0.3),
-        ),
       ),
     );
   }

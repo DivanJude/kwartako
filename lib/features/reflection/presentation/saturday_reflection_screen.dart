@@ -23,7 +23,7 @@ class SaturdayReflectionScreen extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          if (provider.isModelDownloaded)
+          if (provider.isModelDownloaded || provider.geminiApiKey.isNotEmpty)
             provider.isGeneratingAI
                 ? const Center(
                     child: Padding(
@@ -88,6 +88,60 @@ class SaturdayReflectionScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              if (!provider.isModelDownloaded && provider.geminiApiKey.isEmpty) ...[
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: glassTheme?.cardDecoration ?? BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.warningYellow.withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.psychology_rounded, color: AppColors.warningYellow),
+                          const SizedBox(width: 8),
+                          Text(
+                            'AI Coach Offline',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.warningYellow,
+                                ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Weekly reflections require the offline AI Coach model or a Gemini API key. Set up either option in Settings to get started!',
+                        style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                            );
+                          },
+                          icon: const Icon(Icons.settings_rounded, size: 16, color: Colors.white),
+                          label: const Text(
+                            'Open Settings to Setup',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primaryBlue,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
 
               // 1. Summary Metric Grid Card
@@ -546,7 +600,7 @@ class ReflectionChartPainter extends CustomPainter {
 
       // Draw Day Label at bottom
       textPainter.text = TextSpan(
-        text: days[i],
+        text: i < days.length ? days[i] : '',
         style: const TextStyle(color: AppColors.textSecondary, fontSize: 10, fontWeight: FontWeight.bold),
       );
       textPainter.layout();
